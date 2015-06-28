@@ -30,6 +30,13 @@ CLIENT_ID = json.loads(
     open('client_secrets.json', 'r').read()).get('web').get('client_id')
 
 
+def canned_response(message, status_code):
+    """Convenience fn for returning json responses"""
+    response = make_response(json.dumps(message), status_code)
+    response.headers['Content-Type'] = 'application/json'
+    return response
+
+
 @app.route('/login')
 def login():
     state = ''.join(random.choice(
@@ -41,9 +48,7 @@ def login():
 @app.route('/gconnect', methods=['POST'])
 def gconnect():
     if request.args.get('state') != login_session.get('state'):
-        response = make_response(json.dumps('Invalid state parameter'), 401)
-        response.headers['Content-Type'] = 'application/json'
-        return response
+        return canned_response('Invalid state parameter', 401)
 
     code = request.data
     try:
@@ -52,10 +57,8 @@ def gconnect():
         oauth_flow.redirect_uri = 'postmessage'
         credentials = oauth_flow.step2_exchange(code)
     except FlowExchangeError:
-        response = make_response(
-            json.dumps('Failed to upgrade the authorization code.', 401))
-        response.headers['Content-Type'] = 'application/json'
-        return response
+        return canned_response(
+            'Failed to upgrade the authorization code.', 401)
 
     # Check that the access token is valid
     access_token = credentials.access_token
@@ -67,31 +70,22 @@ def gconnect():
 
     # Abort if there is an error in the access token info
     if result.get('error') is not None:
-        response = make_response(json.dumps(result.get('error')), 500)
-        response.headers = ['Content-Type', 'application/json']
-        return response
+        return canned_response(result.get('error'), 500)
 
     # Verify that the access token is used for the intended user
     gplus_id = credentials.id_token.get('sub')
     if result.get('user_id') != gplus_id:
-        response = make_response(
-            json.dumps("Token's user ID doesn't match given user ID"), 401)
-        response.headers['Content-Type'] = 'application/json'
-        return response
+        return canned_response(
+            "Token's user ID doesn't match given user ID", 401)
     if result.get('issued_to') != CLIENT_ID:
-        response = make_response(
-            json.dumps("Token's client ID does not match app's."), 401)
-        response.headers['Content-Type'] = 'application/json'
-        return response
+        return canned_response(
+            "Token's client ID does not match app's.", 401)
 
     # Check to see if user is already logged in
     stored_credentials = login_session.get('credentials')
     stored_gplus_id = login_session.get('gplus_id')
     if stored_credentials is not None and gplus_id == stored_gplus_id:
-        response = make_response(
-            json.dumps('Current user is already connectec'), 200)
-        response.headers['Content-Type'] = 'application/json'
-        return response
+        return canned_response('Current user is already connected', 200)
 
     # Store the access token in the session for later use
     login_session['credentials'] = credentials
@@ -121,10 +115,7 @@ def gdisconnect():
     # Only disconnect a connected user
     credentials = login_session.get('credentials')
     if credentials is None:
-        repsonse = make_response(
-            json.dumps('Current user is not connected.'), 401)
-        response.headers['Content-Type'] = 'application/json'
-        return response
+        return canned_response('Current user is not connected.', 401)
 
     access_token = credentials.access_token
     url = 'https://accounts.google.com/o/oauth2/revoke?token={}'.format(
@@ -138,16 +129,10 @@ def gdisconnect():
         del login_session['username']
         del login_session['email']
         del login_session['picture']
-
-        response = make_response(json.dumps('Successfully disconnected.'), 200)
-        response.headers['Content-Type'] = 'application/json'
-        return response
+        return canned_response('Successfully disconnected', 200)
 
     else:
-        response = make_response(
-            json.dumps('Failed to revoke token for given user.'), 400)
-        response.headers['Content-Type'] = 'application/json'
-        return response
+        return canned_response('Failed to revoke token for given user.', 400)
 
 
 # JSON APIs to view Restaurant Information
